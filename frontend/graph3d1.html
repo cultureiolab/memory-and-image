@@ -17,6 +17,9 @@
     display: flex; align-items: center; gap: 12px;
     font-family: sans-serif; font-size: 14px; color: #333;
   }
+  #status {
+  display: none;
+  }
   #tour-toggle {
     background: rgba(0, 0, 0, 0.05);
     border: 1px solid rgba(0, 0, 0, 0.25);
@@ -257,7 +260,7 @@
   // How far outside the node the camera parks during ZOOM_IN/HOLD, along
   // the ray from the graph's center through the node -- the standard
   // "click to focus" pattern for this library.
-  const FOCUS_DISTANCE = 60;
+  const FOCUS_DISTANCE = 30;
   const OVERVIEW_PADDING = 60;
 
   let mode = 'manual'; // 'manual' | 'tour'
