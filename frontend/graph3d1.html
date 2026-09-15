@@ -353,7 +353,7 @@
     mode = 'tour';
     tourToggleBtn.textContent = 'Auto Tour: On';
     Graph.controls().enabled = false; // ignore manual drag/orbit while touring
-
+    Graph.showNavInfo(false); 
     const now = performance.now();
     // Short catch-up snap from wherever the user left the camera, capped
     // so it never runs longer than the overview hold itself.
@@ -367,6 +367,7 @@
     mode = 'manual';
     tourToggleBtn.textContent = 'Auto Tour: Off';
     Graph.controls().enabled = true;
+    Graph.showNavInfo(true); 
     tween.active = false;
     currentTourNode = null;
   }
