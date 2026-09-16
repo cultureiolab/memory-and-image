@@ -15,6 +15,7 @@ const culture_schema = new mongoose.Schema({
         }
     },
     s3Url: String,
+    thumbFilename: { type: String, default: null },
     location: {
         latitude: Number,
         longitude: Number,

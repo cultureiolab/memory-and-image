@@ -10,9 +10,9 @@ import basicAuth from "express-basic-auth";
 import { GraphModel } from "./graph_schema.js";
 
 
-import { generatePresignedUrl, generateGetPresignedUrl } from "./s3.js";
+import { generatePresignedUrl, generateGetPresignedUrl, uploadBuffer } from "./s3.js";
 import { CultureModel } from "./culture_schema.js";
-import { loadModels, runYolo, runClip, runSceneClassification, primaryCategoryFrom } from "./inference.js";
+import { loadModels, runYolo, runClip, runSceneClassification, primaryCategoryFrom, makeDisplayThumbnail } from "./inference.js";
 
 dotenv.config();
 
@@ -56,6 +56,27 @@ async function fetchImageBuffer(filename) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+// Derives the S3 key for a photo's display-sized copy from its original
+// filename, e.g. "abc123.jpeg" -> "thumbs/abc123.jpg". 
+function thumbFilenameFor(originalFilename) {
+  const base = originalFilename.replace(/\.[^./]+$/, "");
+  return `thumbs/${base}.jpg`;
+}
+
+// Generates the resized display copy and uploads it to S3. 
+// Failure here is noted but won't block classification
+// worst case the graph keeps falling back to the full-res original for this one photo.
+async function makeAndUploadThumbnail(doc, filename, imageBuffer) {
+  try {
+    const thumbBuffer = await makeDisplayThumbnail(imageBuffer);
+    const thumbFilename = thumbFilenameFor(filename);
+    await uploadBuffer(thumbFilename, thumbBuffer, "image/jpeg");
+    await CultureModel.findByIdAndUpdate(doc._id, { thumbFilename });
+  } catch (err) {
+    console.error(`Thumbnail generation failed for ${doc._id}:`, err.message);
+  }
+}
+
 // Runs YOLO + CLIP taxonomy classification + CLIP embedding locally (no
 // more Python microservice calls) and saves classification + clipEmbedding
 // in one write. clipEmbedding is kept ONLY for /api/webcam-match now.
@@ -72,6 +93,7 @@ async function classifyAndSave(doc) {
       runYolo(imageBuffer),
       runSceneClassification(imageBuffer),
       runClip(imageBuffer),
+      makeAndUploadThumbnail(doc, filename, imageBuffer), // same downloaded buffer
     ]);
     const primaryCategory = primaryCategoryFrom(objects, scenePath);
 
@@ -220,14 +242,21 @@ app.get("/api/graph-data", async (req, res) => {
     const docs = await CultureModel.find({}).lean();
  
     const imageNodes = await Promise.all(docs.map(async (doc) => {
-      const filename = resolveFilename(doc);
+      // Prefer the resized display copy so the graph's sprite textures stay small
+      // only fall back to the full-res original for photos that haven't finished their first classification pass yet.
+      const displayFilename = doc.thumbFilename || resolveFilename(doc);
+      const originalFilename = resolveFilename(doc);
       let viewUrl = null;
-      if (filename) {
-        try {
-          viewUrl = await generateGetPresignedUrl(filename);
-        } catch (err) {
-          console.error(`S3 Sign failed for ${filename}:`, err.message);
-        }
+      let fullUrl = null;
+      try {
+        if (displayFilename) viewUrl = await generateGetPresignedUrl(displayFilename);
+        // Only sign the original separately when it's actually a different
+        // object than what's already being used as the display copy.
+        fullUrl = (originalFilename && originalFilename !== displayFilename)
+          ? await generateGetPresignedUrl(originalFilename)
+          : viewUrl;
+      } catch (err) {
+        console.error(`S3 Sign failed for ${displayFilename || originalFilename}:`, err.message);
       }
 
       const scenePath = doc.classification?.scene?.path || [];
@@ -239,6 +268,7 @@ app.get("/api/graph-data", async (req, res) => {
         id: doc._id.toString(),
         imageId: doc.imageId,
         img: viewUrl || 'https://via.placeholder.com/150?text=No+Image+Reference',
+        fullImg: fullUrl || viewUrl || 'https://via.placeholder.com/150?text=No+Image+Reference',
         caption: doc.caption || "",
         timestamp: doc.timestamp,
         isHub: false,
@@ -298,7 +328,7 @@ app.post("/api/webcam-match", async (req, res) => {
           queryVector: queryEmbedding,
           numCandidates: 100,
           limit: 1,
-          filter: { approved: true },
+          filter: { },
         },
       },
       {

@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import dotenv from "dotenv";
 
@@ -55,4 +56,17 @@ export async function generateGetPresignedUrl(filename) {
   const url = await getSignedUrl(s3, command, { expiresIn: 604800 }); // AWS's max for SigV4
   viewUrlCache.set(filename, { url, expiresAt: now + VIEW_URL_TTL_MS });
   return url;
+}
+
+// Uploads a Buffer (e.g. a server-generated thumbnail) directly to S3 
+// no presigning needed since this runs server-side, not from the browser.
+export async function uploadBuffer(filename, buffer, contentType) {
+  const command = new PutObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: filename,
+    Body: buffer,
+    ContentType: contentType,
+    CacheControl: "public, max-age=604800, immutable",
+  });
+  await s3.send(command);
 }

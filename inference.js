@@ -67,6 +67,25 @@ let yoloNames = null; // { "0": "Person", "1": "Dog", ... }
 let clipEmbeddingPipeline = null; // image-only embedding, used for webcam-match ($vectorSearch)
 let clipClassificationPipeline = null; // zero-shot image-vs-text, used for the 31-label taxonomy
 
+// Longest edge for the browser-facing display copy used by graph3d1's
+// texture sprites. 1000px is comfortably sharp for the sprite sizes the
+// graph actually renders at  while keeping each texture in the ~1-2MB range 
+const DISPLAY_MAX_DIM = 1000;
+const DISPLAY_JPEG_QUALITY = 82;
+
+// Produces a resized, re-compressed copy of an uploaded photo for display
+// in the 3D graph.
+export async function makeDisplayThumbnail(imageBuffer) {
+  return sharp(imageBuffer)
+    .rotate() // apply EXIF orientation before resizing so sprites aren't sideways
+    .resize(DISPLAY_MAX_DIM, DISPLAY_MAX_DIM, {
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: DISPLAY_JPEG_QUALITY })
+    .toBuffer();
+}
+
 export async function loadModels() {
   const [session, namesRaw] = await Promise.all([
     ort.InferenceSession.create(YOLO_MODEL_PATH),
