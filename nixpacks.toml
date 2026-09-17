@@ -1,2 +1,0 @@
-[phases.setup]
-aptPkgs = ["build-essential", "libvips-dev"] 
